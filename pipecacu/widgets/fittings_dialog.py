@@ -19,7 +19,7 @@ class FittingsDialog(QtWidgets.QDialog):
         main_layout = QtWidgets.QVBoxLayout(self)
         top_bar = QtWidgets.QHBoxLayout()
         self.filter_box = QtWidgets.QComboBox()
-        self.filter_box.addItems(["全部", "弯头", "渐扩", "渐缩", "三通", "阀门", "泵", "直管", "其他"])
+        self.filter_box.addItems(["全部", "弯头", "渐扩", "渐缩", "三通", "阀门", "泵", "直管", "油品", "其他"])
         self.search_edit = QtWidgets.QLineEdit()
         self.search_edit.setPlaceholderText("搜索名称/分类")
         self.add_btn = QtWidgets.QPushButton("新增管件")
@@ -47,7 +47,7 @@ class FittingsDialog(QtWidgets.QDialog):
         self.id_edit = QtWidgets.QLineEdit()
         self.name_edit = QtWidgets.QLineEdit()
         self.category_box = QtWidgets.QComboBox()
-        self.category_box.addItems(["弯头", "渐扩", "渐缩", "三通", "阀门", "泵", "直管", "其他"])
+        self.category_box.addItems(["弯头", "渐扩", "渐缩", "三通", "阀门", "泵", "直管", "油品", "其他"])
         self.angle_edit = QtWidgets.QLineEdit()
         self.k_edit = QtWidgets.QLineEdit()
         self.in_edit = QtWidgets.QLineEdit()
@@ -58,8 +58,8 @@ class FittingsDialog(QtWidgets.QDialog):
         general_form.addRow("分类", self.category_box)
         general_form.addRow("角度/类型", self.angle_edit)
         general_form.addRow("K 值", self.k_edit)
-        general_form.addRow("入径", self.in_edit)
-        general_form.addRow("出径", self.out_edit)
+        general_form.addRow("入径(mm)", self.in_edit)
+        general_form.addRow("出径(mm)", self.out_edit)
         general_form.addRow("备注", self.remark_edit)
 
         # 直管表单
@@ -80,8 +80,25 @@ class FittingsDialog(QtWidgets.QDialog):
         pipe_form.addRow("计算内径(mm)", self.idmm_edit)
         pipe_form.addRow("备注", self.remark_edit_p)
 
+        # 油品表单
+        oil_widget = QtWidgets.QWidget()
+        oil_form = QtWidgets.QFormLayout(oil_widget)
+        self.id_edit_o = QtWidgets.QLineEdit()
+        self.name_edit_o = QtWidgets.QLineEdit()
+        self.rho15_edit = QtWidgets.QLineEdit()
+        self.v40_edit = QtWidgets.QLineEdit()
+        self.v100_edit = QtWidgets.QLineEdit()
+        self.remark_edit_o = QtWidgets.QLineEdit()
+        oil_form.addRow("ID", self.id_edit_o)
+        oil_form.addRow("油品名称*", self.name_edit_o)
+        oil_form.addRow("15℃密度(kg/m³)", self.rho15_edit)
+        oil_form.addRow("40℃粘度(cSt)", self.v40_edit)
+        oil_form.addRow("100℃粘度(cSt)", self.v100_edit)
+        oil_form.addRow("备注", self.remark_edit_o)
+
         self.form_stack.addWidget(general_widget)  # idx 0
         self.form_stack.addWidget(pipe_widget)     # idx 1
+        self.form_stack.addWidget(oil_widget)      # idx 2
 
         form_layout.addWidget(self.form_stack)
 
@@ -141,6 +158,20 @@ class FittingsDialog(QtWidgets.QDialog):
                 "id_mm": self._to_number(self.idmm_edit.text().strip()),
                 "remark": self.remark_edit_p.text().strip(),
             }
+        elif cat == "油品":
+            name = self.name_edit_o.text().strip()
+            if not name:
+                QtWidgets.QMessageBox.warning(self, "提示", "名称必填")
+                return
+            item = {
+                "id": self.id_edit_o.text().strip() or f"oil_{int(QtCore.QDateTime.currentMSecsSinceEpoch())}",
+                "name": name,
+                "category": "油品",
+                "rho_15": self._to_number(self.rho15_edit.text().strip()),
+                "v_40": self._to_number(self.v40_edit.text().strip()),
+                "v_100": self._to_number(self.v100_edit.text().strip()),
+                "remark": self.remark_edit_o.text().strip(),
+            }
         else:
             name = self.name_edit.text().strip()
             if not name:
@@ -185,6 +216,14 @@ class FittingsDialog(QtWidgets.QDialog):
             self.thickness_edit.setText(str(item.get("thickness", "")))
             self.idmm_edit.setText(str(item.get("id_mm", "")))
             self.remark_edit_p.setText(item.get("remark", ""))
+        elif cat_text == "油品":
+            self.category_box.setCurrentText("油品")
+            self.id_edit_o.setText(item.get("id", ""))
+            self.name_edit_o.setText(item.get("name", ""))
+            self.rho15_edit.setText(str(item.get("rho_15", "")))
+            self.v40_edit.setText(str(item.get("v_40", "")))
+            self.v100_edit.setText(str(item.get("v_100", "")))
+            self.remark_edit_o.setText(item.get("remark", ""))
         else:
             self.id_edit.setText(item.get("id", ""))
             self.name_edit.setText(item.get("name", ""))
@@ -236,6 +275,8 @@ class FittingsDialog(QtWidgets.QDialog):
     def _switch_form(self, cat: str):
         if cat == "直管":
             self.form_stack.setCurrentIndex(1)
+        elif cat == "油品":
+            self.form_stack.setCurrentIndex(2)
         else:
             self.form_stack.setCurrentIndex(0)
 
@@ -251,13 +292,16 @@ class FittingsDialog(QtWidgets.QDialog):
             self.table.setHorizontalHeaderLabels(["ID", "名称", "公称通径DN", "Cv", "Kv", "阻力特性", "备注"])
         elif cat == "泵":
             self.table.setColumnCount(7)
-            self.table.setHorizontalHeaderLabels(["ID", "名称", "型号", "额定流量", "额定压力", "用途", "备注"])
+            self.table.setHorizontalHeaderLabels(["ID", "名称", "型号", "额定流量(m³/h)", "额定压力(bar)", "用途", "备注"])
         elif cat == "三通":
             self.table.setColumnCount(6)
-            self.table.setHorizontalHeaderLabels(["ID", "名称", "规格", "直通阻力", "支路阻力", "备注"])
+            self.table.setHorizontalHeaderLabels(["ID", "名称", "规格", "直通阻力(K)", "支路阻力(K)", "备注"])
+        elif cat == "油品":
+            self.table.setColumnCount(6)
+            self.table.setHorizontalHeaderLabels(["ID", "名称", "15℃密度", "40℃粘度", "100℃粘度", "备注"])
         else:
             self.table.setColumnCount(7)
-            self.table.setHorizontalHeaderLabels(["ID", "名称", "分类", "角度/类型", "K", "入径", "出径"])
+            self.table.setHorizontalHeaderLabels(["ID", "名称", "分类", "角度/类型", "K 值", "入径(mm)", "出径(mm)"])
 
     def _fill_row(self, table, r: int, it: dict, cat_for_table: str):
         if cat_for_table == "直管":
@@ -268,6 +312,13 @@ class FittingsDialog(QtWidgets.QDialog):
             table.setItem(r, 4, QtWidgets.QTableWidgetItem(str(it.get("thickness", ""))))
             table.setItem(r, 5, QtWidgets.QTableWidgetItem(str(it.get("id_mm", ""))))
             table.setItem(r, 6, QtWidgets.QTableWidgetItem(str(it.get("remark", ""))))
+        elif cat_for_table == "油品":
+            table.setItem(r, 0, QtWidgets.QTableWidgetItem(str(it.get("id", ""))))
+            table.setItem(r, 1, QtWidgets.QTableWidgetItem(str(it.get("name", ""))))
+            table.setItem(r, 2, QtWidgets.QTableWidgetItem(str(it.get("rho_15", ""))))
+            table.setItem(r, 3, QtWidgets.QTableWidgetItem(str(it.get("v_40", ""))))
+            table.setItem(r, 4, QtWidgets.QTableWidgetItem(str(it.get("v_100", ""))))
+            table.setItem(r, 5, QtWidgets.QTableWidgetItem(str(it.get("remark", ""))))
         elif cat_for_table == "阀门":
             table.setItem(r, 0, QtWidgets.QTableWidgetItem(str(it.get("id", ""))))
             table.setItem(r, 1, QtWidgets.QTableWidgetItem(str(it.get("name", ""))))

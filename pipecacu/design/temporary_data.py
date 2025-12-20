@@ -71,3 +71,21 @@ class TemporaryData:
             if ln.get("label") == label:
                 return ln
         return None
+
+    def delete_point(self, label: str):
+        """删除特定点及其关联的所有线"""
+        self.data["points"] = [p for p in self.data.get("points", []) if p.get("label") != label]
+        # 同时删除所有起止点包含该 label 的线
+        self.data["lines"] = [ln for ln in self.data.get("lines", []) 
+                             if ln.get("start_label") != label and ln.get("end_label") != label]
+        self._save()
+
+    def delete_line(self, label: str):
+        """删除特定线"""
+        self.data["lines"] = [ln for ln in self.data.get("lines", []) if ln.get("label") != label]
+        self._save()
+
+    def clear(self):
+        """清空所有临时数据"""
+        self.data = {"points": [], "lines": []}
+        self._save()

@@ -1,9 +1,13 @@
 import os
+import json
+import shutil
 from PyQt5 import QtWidgets, QtGui, QtCore
 from main_window import Ui_MainWindow
 from design.designer_area import GridWidget
 from datasystem.fittings_store import FittingsStore
 from widgets.fittings_dialog import FittingsDialog
+from calculation.physics import Fluid # 新增导入
+from calculation.manager import CalculationManager
 
 
 class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
@@ -12,6 +16,10 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setupUi(self)
+        
+        # 初始全局流体设置 (默认使用用户指定的 VG320)
+        self.current_fluid = Fluid(name="VG320 滑油", temp=40.0)
+        
         self.buttons = []
         self.points = []
         self._init_ui()
@@ -30,15 +38,21 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         menubar = self.menubar
         menubar.clear()
         open_act = QtWidgets.QAction("打开", self)
+        new_act = QtWidgets.QAction("新建", self)
         save_act = QtWidgets.QAction("保存", self)
         fittings_act = QtWidgets.QAction("管件库", self)
         calc_act = QtWidgets.QAction("压力计算", self)
         menubar.addAction(open_act)
+        menubar.addAction(new_act)
         menubar.addAction(save_act)
         menubar.addAction(fittings_act)
         menubar.addAction(calc_act)
-        self.menu_actions = {"open": open_act, "save": save_act, "fittings": fittings_act, "calc": calc_act}
+        self.menu_actions = {"open": open_act, "new": new_act, "save": save_act, "fittings": fittings_act, "calc": calc_act}
         fittings_act.triggered.connect(self._open_fittings)
+        open_act.triggered.connect(self._open_project)
+        new_act.triggered.connect(self._new_project)
+        save_act.triggered.connect(self._save_project)
+        calc_act.triggered.connect(self._run_calculation)
 
     def _build_left_buttons(self):
         svg_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "assets", "leftsvg"))
@@ -77,6 +91,8 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 btn.toggled.connect(lambda c, i=idx: self._toggle_tee_point(i, c))
             elif idx == 5:  # 阀门点
                 btn.toggled.connect(lambda c, i=idx: self._toggle_valve_point(i, c))
+            elif idx == 6:  # 删除
+                btn.toggled.connect(lambda c, i=idx: self._toggle_delete(i, c))
             else:
                 btn.toggled.connect(lambda checked, name=text, i=idx: self._toggle_placeholder(i, name, checked))
             btn.setIcon(icon)
@@ -88,32 +104,108 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def _build_panels(self):
         def make_title(text):
-            lbl = QtWidgets.QLabel(text)
-            lbl.setStyleSheet("background: white; padding: 4px;")
+            lbl = QtWidgets.QLabel(f"  {text}")  # 加两个空格增加缩进感
+            lbl.setFixedHeight(30)  # 固定高度，更有条理性
+            # 标题背景色与边框色一致，文字深灰，去掉底部边框，使其与面板融为一体
+            lbl.setStyleSheet("""
+                background-color: #d9d9d9; 
+                color: #333333; 
+                font-weight: bold; 
+                border: none;
+            """)
             return lbl
 
+        # 目录面板 (管路结构)
         catalog_layout = QtWidgets.QVBoxLayout()
-        catalog_layout.setContentsMargins(0,0, 0, 0)
+        catalog_layout.setContentsMargins(0, 0, 0, 0)
+        catalog_layout.setSpacing(0)
+        
+        # 项目名称标签 - 优化为更高级的深色调，与标题区分开
+        self.project_label = QtWidgets.QLabel("  项目：未命名项目")
+        self.project_label.setFixedHeight(32)
+        self.project_label.setStyleSheet("""
+            background-color: #01579b; 
+            color: white; 
+            font-weight: bold;
+            border: none;
+        """)
+        catalog_layout.addWidget(self.project_label)
+        
         catalog_layout.addWidget(make_title("管路结构"))
-        catalog_layout.addStretch()
+        
+        # 树状目录容器 - 增加 4px 的边距，让列表不贴边
+        tree_container = QtWidgets.QWidget()
+        tree_layout = QtWidgets.QVBoxLayout(tree_container)
+        tree_layout.setContentsMargins(4, 4, 4, 4)
+        
+        self.catalog_tree = QtWidgets.QTreeWidget()
+        self.catalog_tree.setHeaderHidden(True)
+        self.catalog_tree.setIndentation(15)
+        self.catalog_tree.setStyleSheet("QTreeWidget { border: none; background: transparent; }")
+        
+        # 初始化顶层节点
+        self.node_group = QtWidgets.QTreeWidgetItem(self.catalog_tree, ["节点"])
+        self.line_group = QtWidgets.QTreeWidgetItem(self.catalog_tree, ["管路"])
+        self.catalog_tree.expandAll()
+        
+        tree_layout.addWidget(self.catalog_tree)
+        catalog_layout.addWidget(tree_container)
         self.catalog.setLayout(catalog_layout)
 
+        # 节点参数面板
         info_layout = QtWidgets.QVBoxLayout()
         info_layout.setContentsMargins(0, 0, 0, 0)
+        info_layout.setSpacing(0)
         info_layout.addWidget(make_title("节点参数"))
-        info_layout.addStretch()
+        
+        info_content = QtWidgets.QWidget()
+        info_content_layout = QtWidgets.QVBoxLayout(info_content)
+        info_content_layout.setContentsMargins(6, 6, 6, 6)
+        # 这里预留给参数表
+        info_content_layout.addStretch()
+        
+        info_layout.addWidget(info_content)
         self.information.setLayout(info_layout)
 
+        # 计算结果面板
         calc_layout = QtWidgets.QVBoxLayout()
-        calc_layout.setContentsMargins(0,0,0,0)
+        calc_layout.setContentsMargins(0, 0, 0, 0)
+        calc_layout.setSpacing(0)
         calc_layout.addWidget(make_title("计算结果"))
-        calc_layout.addStretch()
+        
+        calc_content = QtWidgets.QWidget()
+        calc_content_layout = QtWidgets.QVBoxLayout(calc_content)
+        calc_content_layout.setContentsMargins(2, 2, 2, 2)
+        
+        # 使用表格展示压力和流量
+        self.result_table = QtWidgets.QTableWidget()
+        self.result_table.setColumnCount(4)
+        self.result_table.setHorizontalHeaderLabels(["名称", "类型", "压力 (Pa)", "流量 (m³/h)"])
+        self.result_table.horizontalHeader().setStretchLastSection(True)
+        self.result_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.result_table.setStyleSheet("QTableWidget { border: none; }")
+        calc_content_layout.addWidget(self.result_table)
+        
+        calc_layout.addWidget(calc_content)
         self.caculate.setLayout(calc_layout)
 
+        # 日志信息面板
         log_layout = QtWidgets.QVBoxLayout()
         log_layout.setContentsMargins(0, 0, 0, 0)
+        log_layout.setSpacing(0)
         log_layout.addWidget(make_title("日志信息"))
-        log_layout.addStretch()
+        
+        log_content = QtWidgets.QWidget()
+        log_content_layout = QtWidgets.QVBoxLayout(log_content)
+        log_content_layout.setContentsMargins(2, 2, 2, 2)
+        
+        # 使用文本框展示日志
+        self.log_text = QtWidgets.QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setStyleSheet("QTextEdit { border: none; background: #fdfdfd; font-family: 'Consolas'; }")
+        log_content_layout.addWidget(self.log_text)
+        
+        log_layout.addWidget(log_content)
         self.log.setLayout(log_layout)
 
     def _build_canvas(self):
@@ -122,13 +214,38 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.grid = GridWidget(self.canvas)
         canvas_layout.addWidget(self.grid)
         self.canvas.setLayout(canvas_layout)
+        # 连接数据变化信号
+        self.grid.data_changed.connect(self._refresh_catalog)
+        # 初始刷新一次
+        self._refresh_catalog()
+
+    def _refresh_catalog(self):
+        """刷新左侧目录树"""
+        if not hasattr(self, "catalog_tree"):
+            return
+            
+        self.node_group.takeChildren()
+        self.line_group.takeChildren()
+        
+        # 添加点
+        for p in self.grid._points:
+            label = p.get("label", "")
+            QtWidgets.QTreeWidgetItem(self.node_group, [label])
+            
+        # 添加线
+        for ln in self.grid._lines:
+            label = ln.get("label", "")
+            QtWidgets.QTreeWidgetItem(self.line_group, [label])
+            
+        self.catalog_tree.expandAll()
 
     def _rebuild_layout(self):
+        # 统一面板样式：取消系统默认边框，完全交给 CSS 控制，实现标题栏与边框的无缝融合
+        panel_style = "QFrame { border: 4px solid #d9d9d9; background-color: white; }"
         for frame in [self.design_buttons, self.catalog, self.information, self.canvas, self.caculate, self.log]:
-            frame.setFrameShape(QtWidgets.QFrame.Box)
-            frame.setFrameShadow(QtWidgets.QFrame.Plain)
-            frame.setLineWidth(4)
-            frame.setStyleSheet("border: 4px solid #d9d9d9;")
+            frame.setFrameShape(QtWidgets.QFrame.NoFrame)  # 取消原生形状
+            frame.setLineWidth(1)
+            frame.setStyleSheet(panel_style)
 
         main_layout = QtWidgets.QHBoxLayout(self.centralwidget)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -222,6 +339,15 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             if not checked:
                 self.grid.set_add_point_enabled(False)
 
+    def _toggle_delete(self, idx: int, checked: bool):
+        if not self._allow_mode_toggle(idx, checked):
+            return
+        if hasattr(self, "grid"):
+            self.grid.set_delete_enabled(checked)
+            if checked:
+                self.grid.set_add_point_enabled(False)
+                self.grid.set_connect_enabled(False)
+
     def _toggle_placeholder(self, idx: int, name: str, checked: bool):
         if not self._allow_mode_toggle(idx, checked):
             return
@@ -258,4 +384,181 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         store = FittingsStore(os.path.join(os.path.dirname(__file__), "datasystem"))
         dialog = FittingsDialog(store, self)
         dialog.exec_()
+
+    def _new_project(self):
+        """新建工程：确认后清空当前画布和临时数据"""
+        if not hasattr(self, "grid") or not hasattr(self.grid, "temp_data"):
+            return
+
+        reply = QtWidgets.QMessageBox.question(
+            self, "新建工程", "确定要新建工程吗？当前未保存的设计将会丢失。",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No
+        )
+        if reply == QtWidgets.QMessageBox.Yes:
+            self.grid.temp_data.clear()
+            self.grid.load_from_temp()
+            self.project_label.setText("项目：未命名项目")
+            self.result_table.setRowCount(0)
+            self.log_text.clear()
+            QtWidgets.QMessageBox.information(self, "提示", "已创建新画布")
+
+    def _save_project(self):
+        """将当前临时数据保存为正式文件"""
+        if not hasattr(self, "grid") or not hasattr(self.grid, "temp_data"):
+            return
+        
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "保存工程", "", "Project Files (*.json)")
+        if path:
+            try:
+                # 直接将当前内存中的数据写入目标路径
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(self.grid.temp_data.data, f, ensure_ascii=False, indent=2)
+                
+                # 更新项目名称显示
+                filename = os.path.basename(path)
+                self.project_label.setText(f"项目：{filename}")
+                
+                QtWidgets.QMessageBox.information(self, "成功", f"工程已保存至：\n{path}")
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(self, "错误", f"保存失败：\n{str(e)}")
+
+    def _open_project(self):
+        """打开现有工程文件并加载到画布"""
+        if not hasattr(self, "grid") or not hasattr(self.grid, "temp_data"):
+            return
+
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "打开工程", "", "Project Files (*.json)")
+        if path:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    new_data = json.load(f)
+                
+                # 简单校验
+                if "points" not in new_data or "lines" not in new_data:
+                    raise ValueError("无效的工程文件格式")
+
+                # 更新临时数据并同步到文件
+                self.grid.temp_data.data = new_data
+                self.grid.temp_data._save()
+                
+                # 更新项目名称显示
+                filename = os.path.basename(path)
+                self.project_label.setText(f"项目：{filename}")
+                
+                # 让画布重新从临时数据加载
+                self.grid.load_from_temp()
+                QtWidgets.QMessageBox.information(self, "成功", "工程加载完成")
+                self._add_log(f"成功打开工程: {filename}")
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(self, "错误", f"打开失败：\n{str(e)}")
+
+    def _run_calculation(self):
+        """触发压力计算前弹出油品选择，然后执行仿真"""
+        # 1. 弹出油品选择对话框
+        all_items = self.grid.fittings_store.all()
+        oils = [it for it in all_items if it.get("category") == "油品"]
+        
+        if not oils:
+            QtWidgets.QMessageBox.warning(self, "提示", "管件库中未找到油品数据，请先在管件库添加。")
+            return
+
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle("选择仿真油品")
+        dlg.setFixedWidth(300)
+        layout = QtWidgets.QFormLayout(dlg)
+        
+        oil_combo = QtWidgets.QComboBox()
+        for o in oils:
+            oil_combo.addItem(o["name"], o)
+        
+        # 自动匹配上次选择
+        idx = oil_combo.findText(self.current_fluid.name)
+        if idx >= 0: oil_combo.setCurrentIndex(idx)
+        
+        layout.addRow("选择油品", oil_combo)
+        
+        info_label = QtWidgets.QLabel()
+        info_label.setStyleSheet("color: gray; font-size: 11px;")
+        def update_info():
+            data = oil_combo.currentData()
+            info_label.setText(f"参数: ρ={data.get('rho_15')}kg/m³, μ={data.get('v_40')}cSt")
+        oil_combo.currentIndexChanged.connect(update_info)
+        update_info()
+        layout.addRow("", info_label)
+        
+        btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        layout.addRow(btns)
+        
+        if dlg.exec_() != QtWidgets.QDialog.Accepted:
+            return
+
+        # 2. 更新流体参数
+        selected_oil_data = oil_combo.currentData()
+        self.current_fluid = Fluid(name=selected_oil_data["name"])
+        self.current_fluid.OIL_DATABASE[selected_oil_data["name"]] = {
+            "rho_15": selected_oil_data.get("rho_15", 900.0),
+            "v_40": selected_oil_data.get("v_40", 40.0)
+        }
+        self.current_fluid.update_properties()
+        
+        self._add_log(f"开始压力仿真... (选中油品: {self.current_fluid.name})")
+        
+        # 3. 执行仿真
+        if not hasattr(self, "grid") or not hasattr(self.grid, "temp_data"):
+            return
+            
+        json_path = self.grid.temp_data.json_path
+        manager = CalculationManager(json_path)
+        response = manager.run(fluid=self.current_fluid)
+        
+        if response.get("success"):
+            self._add_log(f"计算完成", "green")
+            self._display_results(response.get("result", {}))
+        else:
+            self._add_log(f"计算失败: {response['msg']}", "red")
+            QtWidgets.QMessageBox.warning(self, "计算失败", response['msg'])
+
+    def _display_results(self, results):
+        """在表格中展示计算结果"""
+        pressures = results.get("pressures", {})
+        node_flows = results.get("node_flows", {}) 
+        flows = results.get("flows", {})
+        
+        # 合并展示
+        self.result_table.setRowCount(0)
+        self.result_table.setRowCount(len(pressures) + len(flows))
+        
+        row = 0
+        # 展示节点数据
+        for node_id in pressures.keys():
+            p_val = pressures[node_id]
+            q_node = node_flows.get(node_id, 0.0)
+            
+            self.result_table.setItem(row, 0, QtWidgets.QTableWidgetItem(node_id))
+            self.result_table.setItem(row, 1, QtWidgets.QTableWidgetItem("节点"))
+            self.result_table.setItem(row, 2, QtWidgets.QTableWidgetItem(f"{p_val:.2f}"))
+            self.result_table.setItem(row, 3, QtWidgets.QTableWidgetItem(f"{q_node * 3600.0:.4f}")) # 换算为 m3/h
+            row += 1
+            
+        # 展示管路流量
+        for line_id, q_val in flows.items():
+            self.result_table.setItem(row, 0, QtWidgets.QTableWidgetItem(line_id))
+            self.result_table.setItem(row, 1, QtWidgets.QTableWidgetItem("管路"))
+            self.result_table.setItem(row, 2, QtWidgets.QTableWidgetItem("-")) # 管路两端压力不同，不显示单点压力
+            self.result_table.setItem(row, 3, QtWidgets.QTableWidgetItem(f"{q_val * 3600.0:.4f}")) # 换算为 m3/h
+            row += 1
+
+    def _add_log(self, message, color="black"):
+        """向日志面板添加带时间戳的信息"""
+        timestamp = QtCore.QDateTime.currentDateTime().toString("yyyy-MM-dd HH:mm:ss")
+        formatted_msg = f'<span style="color: gray;">[{timestamp}]</span> <span style="color: {color};">{message}</span>'
+        self.log_text.append(formatted_msg)
+
+    def closeEvent(self, event):
+        """窗口关闭时清空临时数据，防止下次启动干扰"""
+        if hasattr(self, "grid") and hasattr(self.grid, "temp_data"):
+            self.grid.temp_data.clear()
+        event.accept()
 

@@ -7,6 +7,7 @@ from .temporary_data import TemporaryData
 
 class GridWidget(QtWidgets.QWidget):
     """画板区域：绘制网格并支持缩放、取点"""
+    data_changed = QtCore.pyqtSignal()  # 当数据（点、线）发生变化时触发
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -20,6 +21,7 @@ class GridWidget(QtWidgets.QWidget):
         self._points = []  # list of dict: {x,y,label,ptype}
         self.add_point_enabled = False
         self.drag_enabled = False
+        self.delete_enabled = False
         self.current_point_type = "normal"
         self._point_radius = 10
         # 连线状态
@@ -37,6 +39,8 @@ class GridWidget(QtWidgets.QWidget):
         self.pump_icon = self._load_svg_icon(["Beng.svg", "beng.svg"], 24)
         self.tee_icon = self._load_svg_icon(["D_fittings.svg", "guanjian.svg", "Tee.svg"], 24)
         self.valve_icon = self._load_svg_icon(["valve.svg", "Valve.svg"], 24)
+        # 初始化时加载已有数据
+        self.load_from_temp()
 
     def _load_svg_icon(self, filename, size: int):
         try:
@@ -112,6 +116,10 @@ class GridWidget(QtWidgets.QWidget):
             self._last_pos = None
         self.update()
 
+    def set_delete_enabled(self, enabled: bool):
+        self.delete_enabled = enabled
+        self.update()
+
     def set_point_type(self, ptype: str):
         self.current_point_type = ptype or "normal"
 
@@ -121,6 +129,42 @@ class GridWidget(QtWidgets.QWidget):
             self._start_point = None
             self._temp_line = None
         self.update()
+
+    def load_from_temp(self):
+        """从 TemporaryData 加载数据同步到画布"""
+        data = self.temp_data.data
+        self._points = data.get("points", [])
+        
+        # 将线数据从 label 格式转回坐标格式以便绘制
+        new_lines = []
+        max_line_idx = 0
+        for ln in data.get("lines", []):
+            s_label = ln.get("start_label")
+            e_label = ln.get("end_label")
+            p_s = self._find_point_by_label(s_label)
+            p_e = self._find_point_by_label(e_label)
+            if p_s and p_e:
+                line_copy = ln.copy()
+                line_copy["start"] = (p_s["x"], p_s["y"])
+                line_copy["end"] = (p_e["x"], p_e["y"])
+                new_lines.append(line_copy)
+                # 更新下一个线的索引计数
+                try:
+                    l_idx = int(ln.get("label", "L0")[1:])
+                    if l_idx > max_line_idx:
+                        max_line_idx = l_idx
+                except:
+                    pass
+        self._lines = new_lines
+        self._next_line_idx = max_line_idx + 1
+        self.data_changed.emit()
+        self.update()
+
+    def _find_point_by_label(self, label: str):
+        for p in self._points:
+            if p.get("label") == label:
+                return p
+        return None
 
     def _hit_point(self, x: float, y: float):
         thr = self._point_radius * 1.1
@@ -194,6 +238,22 @@ class GridWidget(QtWidgets.QWidget):
         if self.drag_enabled and event.button() == QtCore.Qt.LeftButton:
             self._last_pos = QtCore.QPointF(event.pos())
             return
+        if self.delete_enabled and event.button() == QtCore.Qt.LeftButton:
+            x = (event.x() / self._scale) - self._offset.x()
+            y = (event.y() / self._scale) - self._offset.y()
+            hit_p = self._hit_point(x, y)
+            if hit_p:
+                label = hit_p.get("label")
+                self.temp_data.delete_point(label)
+                # 重新加载本地数据以保持同步
+                self.load_from_temp()
+                return
+            hit_l_idx = self._hit_line(x, y)
+            if hit_l_idx is not None:
+                label = self._lines[hit_l_idx].get("label")
+                self.temp_data.delete_line(label)
+                self.load_from_temp()
+            return
         if self.add_point_enabled and event.button() == QtCore.Qt.LeftButton:
             x = (event.x() / self._scale) - self._offset.x()
             y = (event.y() / self._scale) - self._offset.y()
@@ -236,6 +296,7 @@ class GridWidget(QtWidgets.QWidget):
             }
             self._points.append(new_point)
             self._persist_point(new_point)
+            self.data_changed.emit()
             self.update()
             return
         if self.connect_enabled and event.button() == QtCore.Qt.LeftButton:
@@ -294,6 +355,7 @@ class GridWidget(QtWidgets.QWidget):
                 new_line = {"start": start, "end": end, "label": label, "diameter": "", "length": "", "remark": ""}
                 self._lines.append(new_line)
                 self._persist_line(new_line)
+                self.data_changed.emit()
             self._start_point = None
             self._temp_line = None
         self.update()
@@ -475,6 +537,9 @@ class GridWidget(QtWidgets.QWidget):
         return ""
 
     def _open_point_dialog(self, point: dict):
+        # 实时从文件重新加载管件库，确保在对话框中能看到最新添加的管件
+        self.fittings_store._load()
+        
         dlg = QtWidgets.QDialog(self)
         dlg.resize(450, 450)
         dlg.setWindowTitle(point.get("label", "点"))
@@ -495,7 +560,7 @@ class GridWidget(QtWidgets.QWidget):
         form_top.addRow("标签", lbl_label)
         form_top.addRow("坐标", lbl_coord)
         form_top.addRow("类型", type_box)
-        form_top.addRow("高度", elevation_edit)
+        form_top.addRow("高度(m)", elevation_edit)
         layout.addLayout(form_top)
 
         stack = QtWidgets.QStackedWidget()
@@ -529,29 +594,43 @@ class GridWidget(QtWidgets.QWidget):
         pump_combo.addItem("（不选择）", userData=None)
         for item in self.fittings_store.all():
             if item.get("category") == "泵":
-                txt = f"{item.get('name','')} | {item.get('model','')} | Q={item.get('flow','')} | P={item.get('pressure','')}"
+                txt = f"{item.get('name','')} | Q={item.get('flow','')} | P={item.get('pressure','')}"
                 pump_combo.addItem(txt, userData=item)
-                if point.get("pump_model") and str(point.get("pump_model")) == str(item.get("model", "")):
+                if point.get("pump_type") == item.get("pump_type") and point.get("pump_flow") == item.get("flow"):
                     pump_combo.setCurrentIndex(pump_combo.count() - 1)
-        pump_model = QtWidgets.QLineEdit(str(point.get("pump_model", "")))
-        pump_head = QtWidgets.QLineEdit(str(point.get("pump_head", "")))
-        pump_eff = QtWidgets.QLineEdit(str(point.get("pump_eff", "")))
-        pump_speed = QtWidgets.QLineEdit(str(point.get("pump_speed", "")))
-        pump_flow = QtWidgets.QLineEdit(str(point.get("pump_flow", "")))
-        pump_npsh = QtWidgets.QLineEdit(str(point.get("pump_npsh", "")))
-        pump_in_dia = QtWidgets.QLineEdit(str(point.get("pump_in_dia", "")))
-        pump_out_dia = QtWidgets.QLineEdit(str(point.get("pump_out_dia", "")))
+        
+        pump_type_combo = QtWidgets.QComboBox()
+        pump_type_combo.addItems(["容积泵 (齿轮/螺杆)", "离心泵 (性能曲线)"])
+        
+        pump_flow = QtWidgets.QLineEdit(str(point.get("pump_flow", ""))) # m3/h
+        pump_head = QtWidgets.QLineEdit(str(point.get("pump_head", ""))) # bar
+        pump_shutoff = QtWidgets.QLineEdit(str(point.get("pump_speed", ""))) # bar (离心泵关死扬程)
         remark_edit_p = QtWidgets.QLineEdit(str(point.get("remark", "")))
-        pump_form.addRow("选型", pump_combo)
-        pump_form.addRow("型号", pump_model)
-        pump_form.addRow("额定流量(Q)", pump_flow)
-        pump_form.addRow("扬程(H)", pump_head)
-        pump_form.addRow("效率(η)", pump_eff)
-        pump_form.addRow("转速(rpm)", pump_speed)
-        pump_form.addRow("NPSH", pump_npsh)
-        pump_form.addRow("进口直径", pump_in_dia)
-        pump_form.addRow("出口直径", pump_out_dia)
+        
+        pump_form.addRow("数据库选型", pump_combo)
+        pump_form.addRow("计算类型", pump_type_combo)
+        pump_form.addRow("设定流量(m³/h)", pump_flow)
+        pump_form.addRow("设定压力/扬程(bar)", pump_head)
+        pump_form.addRow("关死压力(bar, 仅离心泵)", pump_shutoff)
         pump_form.addRow("备注", remark_edit_p)
+
+        def on_pump_selected(idx):
+            data = pump_combo.itemData(idx)
+            if data:
+                pump_flow.setText(str(data.get("flow", "")))
+                pump_head.setText(str(data.get("pressure", "")))
+                pump_shutoff.setText(str(data.get("shutoff_pressure", "")))
+                if data.get("pump_type") == "curve":
+                    pump_type_combo.setCurrentIndex(1)
+                else:
+                    pump_type_combo.setCurrentIndex(0)
+
+        pump_combo.currentIndexChanged.connect(on_pump_selected)
+        # 初始化类型选择
+        if point.get("pump_type") == "curve":
+            pump_type_combo.setCurrentIndex(1)
+        else:
+            pump_type_combo.setCurrentIndex(0)
 
         # tee form
         tee_widget = QtWidgets.QWidget()
@@ -571,10 +650,10 @@ class GridWidget(QtWidgets.QWidget):
         tee_branch_dia = QtWidgets.QLineEdit(str(point.get("tee_branch_dia", "")))
         remark_edit_t = QtWidgets.QLineEdit(str(point.get("remark", "")))
         tee_form.addRow("选型", tee_combo)
-        tee_form.addRow("主干直径", tee_main_dia)
-        tee_form.addRow("支管直径", tee_branch_dia)
-        tee_form.addRow("分支角度", tee_angle)
-        tee_form.addRow("分流比例", tee_ratio)
+        tee_form.addRow("主干直径(mm)", tee_main_dia)
+        tee_form.addRow("支管直径(mm)", tee_branch_dia)
+        tee_form.addRow("分支角度(°)", tee_angle)
+        tee_form.addRow("分流比例(%)", tee_ratio)
         tee_form.addRow("局阻系数K", tee_k)
         tee_form.addRow("备注", remark_edit_t)
 
@@ -596,9 +675,9 @@ class GridWidget(QtWidgets.QWidget):
         remark_edit_v = QtWidgets.QLineEdit(str(point.get("remark", "")))
         valve_form.addRow("选型", valve_combo)
         valve_form.addRow("阀型", valve_type)
-        valve_form.addRow("口径", valve_dia)
-        valve_form.addRow("开度", valve_open)
-        valve_form.addRow("局阻系数K", valve_k)
+        valve_form.addRow("口径(mm)", valve_dia)
+        valve_form.addRow("开度(%)", valve_open)
+        valve_form.addRow("流量系数(Cv/Kv)", valve_k)
         valve_form.addRow("备注", remark_edit_v)
 
         stack.addWidget(normal_widget)  # index 0 normal
@@ -658,7 +737,6 @@ class GridWidget(QtWidgets.QWidget):
 
         switch_form(_display_to_ptype(type_box.currentText()))
         type_box.currentTextChanged.connect(lambda txt: switch_form(_display_to_ptype(txt)))
-        pump_combo.currentIndexChanged.connect(lambda idx: _fill_pump(pump_combo.itemData(idx)))
         tee_combo.currentIndexChanged.connect(lambda idx: _fill_tee(tee_combo.itemData(idx)))
         valve_combo.currentIndexChanged.connect(lambda idx: _fill_valve(valve_combo.itemData(idx)))
 
@@ -679,26 +757,14 @@ class GridWidget(QtWidgets.QWidget):
                 point["tee_main_dia"] = point["tee_branch_dia"] = ""
                 point["valve_type"] = point["valve_dia"] = point["valve_open"] = point["valve_k"] = ""
             elif ptype == "pump":
-                data = pump_combo.currentData()
-                if data:
-                    point["pump_model"] = data.get("model", "")
-                    point["pump_flow"] = str(data.get("flow", ""))
-                    point["pump_head"] = str(data.get("pressure", ""))
-                    point["remark"] = data.get("remark", "")
-                else:
-                    point["pump_model"] = pump_model.text().strip()
-                    point["pump_flow"] = pump_flow.text().strip()
-                    point["pump_head"] = pump_head.text().strip()
-                point["pump_model"] = pump_model.text().strip()
-                point["pump_head"] = pump_head.text().strip()
-                point["pump_eff"] = pump_eff.text().strip()
-                point["pump_speed"] = pump_speed.text().strip()
+                point["pump_type"] = "curve" if pump_type_combo.currentIndex() == 1 else "gear"
                 point["pump_flow"] = pump_flow.text().strip()
-                point["pump_npsh"] = pump_npsh.text().strip()
-                point["pump_in_dia"] = pump_in_dia.text().strip()
-                point["pump_out_dia"] = pump_out_dia.text().strip()
+                point["pump_head"] = pump_head.text().strip()
+                point["pump_speed"] = pump_shutoff.text().strip() # 借用 speed 存离心泵关死压力
                 point["remark"] = remark_edit_p.text().strip()
+                
                 point["fitting_id"] = point["fitting_name"] = point["fitting_k"] = point["fitting_angle"] = ""
+                point["pump_eff"] = point["pump_npsh"] = point["pump_in_dia"] = point["pump_out_dia"] = ""
                 point["tee_angle"] = point["tee_ratio"] = point["tee_k"] = ""
                 point["tee_main_dia"] = point["tee_branch_dia"] = ""
                 point["diameter"] = ""
@@ -758,6 +824,10 @@ class GridWidget(QtWidgets.QWidget):
     def _open_line_dialog(self, idx: int):
         if idx < 0 or idx >= len(self._lines):
             return
+        
+        # 实时从文件重新加载管件库
+        self.fittings_store._load()
+        
         line = self._lines[idx]
         dlg = QtWidgets.QDialog(self)
         dlg.resize(300, 500)
@@ -776,8 +846,8 @@ class GridWidget(QtWidgets.QWidget):
         remark_edit = QtWidgets.QLineEdit(str(line.get("remark", "")))
         form.addRow("两端", lbl_se)
         form.addRow("类型/规格", pipe_combo)
-        form.addRow("直径", dia_edit)
-        form.addRow("长度", len_edit)
+        form.addRow("直径(mm)", dia_edit)
+        form.addRow("长度(m)", len_edit)
         form.addRow("备注", remark_edit)
         layout.addLayout(form)
         btn_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)

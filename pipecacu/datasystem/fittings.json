@@ -7,7 +7,7 @@
     "k": 0.3,
     "inDiameter": "/",
     "outDiameter": "/",
-    "remark": ""
+    "remark": "单位:角度(°),直径(mm)"
   },
   {
     "id": "elbow90",
@@ -17,7 +17,7 @@
     "k": 1.2,
     "inDiameter": "/",
     "outDiameter": "/",
-    "remark": ""
+    "remark": "单位:角度(°),直径(mm)"
   },
   {
     "id": "expansion",
@@ -27,7 +27,7 @@
     "k": 0.4,
     "inDiameter": "/",
     "outDiameter": "/",
-    "remark": ""
+    "remark": "单位:直径(mm)"
   },
   {
     "id": "contraction",
@@ -37,17 +37,7 @@
     "k": 0.8,
     "inDiameter": "/",
     "outDiameter": "/",
-    "remark": ""
-  },
-  {
-    "id": "elbow180",
-    "name": "180°弯头",
-    "category": "弯头",
-    "angle": "180",
-    "k": 0.9,
-    "inDiameter": "/",
-    "outDiameter": "/",
-    "remark": ""
+    "remark": "单位:直径(mm)"
   },
   {
     "id": "pipe_dn15",
@@ -57,7 +47,7 @@
     "od": 21.3,
     "thickness": 2.8,
     "id_mm": 15.7,
-    "remark": ""
+    "remark": "单位:mm"
   },
   {
     "id": "pipe_dn20",
@@ -67,7 +57,7 @@
     "od": 26.9,
     "thickness": 2.8,
     "id_mm": 21.3,
-    "remark": ""
+    "remark": "单位:mm"
   },
   {
     "id": "pipe_dn25",
@@ -77,7 +67,7 @@
     "od": 33.7,
     "thickness": 3.2,
     "id_mm": 27.3,
-    "remark": ""
+    "remark": "单位:mm"
   },
   {
     "id": "pipe_dn32",
@@ -87,7 +77,7 @@
     "od": 42.4,
     "thickness": 3.5,
     "id_mm": 35.4,
-    "remark": ""
+    "remark": "单位:mm"
   },
   {
     "id": "pipe_dn40",
@@ -97,7 +87,7 @@
     "od": 48.3,
     "thickness": 3.5,
     "id_mm": 41.3,
-    "remark": ""
+    "remark": "单位:mm"
   },
   {
     "id": "pipe_dn50",
@@ -107,7 +97,7 @@
     "od": 60.3,
     "thickness": 3.8,
     "id_mm": 52.7,
-    "remark": ""
+    "remark": "单位:mm"
   },
   {
     "id": "pipe_dn65",
@@ -115,9 +105,9 @@
     "category": "直管",
     "dn": 65,
     "od": 76.1,
-    "thickness": 4,
+    "thickness": 4.0,
     "id_mm": 68.1,
-    "remark": ""
+    "remark": "单位:mm"
   },
   {
     "id": "pipe_dn80",
@@ -125,9 +115,9 @@
     "category": "直管",
     "dn": 80,
     "od": 88.9,
-    "thickness": 4,
+    "thickness": 4.0,
     "id_mm": 80.9,
-    "remark": ""
+    "remark": "单位:mm"
   },
   {
     "id": "pipe_dn100",
@@ -137,14 +127,14 @@
     "od": 114.3,
     "thickness": 4.5,
     "id_mm": 105.3,
-    "remark": ""
+    "remark": "单位:mm"
   },
   {
     "id": "elbow45_long",
     "name": "45°长半径弯头",
     "category": "弯头",
     "angle": 45,
-    "k": 0.2,
+    "k": 0.20,
     "remark": "R≈1.5D"
   },
   {
@@ -152,7 +142,7 @@
     "name": "90°长半径弯头",
     "category": "弯头",
     "angle": 90,
-    "k": 0.3,
+    "k": 0.30,
     "remark": "R≈1.5D"
   },
   {
@@ -168,7 +158,7 @@
     "name": "90°直角弯头",
     "category": "弯头",
     "angle": 90,
-    "k": 1.1,
+    "k": 1.10,
     "remark": "R≈0"
   },
   {
@@ -194,7 +184,7 @@
     "spec": "Equal Tee",
     "k_run": 0.15,
     "k_branch": 0.85,
-    "remark": "主支管径一致"
+    "remark": "单位:mm, 主支管径一致"
   },
   {
     "id": "tee_45_y",
@@ -202,17 +192,17 @@
     "category": "三通",
     "spec": "45° Y-Tee",
     "k_run": 0.12,
-    "k_branch": 0.4,
-    "remark": "分流更顺畅"
+    "k_branch": 0.40,
+    "remark": "单位:mm, 分流更顺畅"
   },
   {
     "id": "tee_reducing",
     "name": "异径三通",
     "category": "三通",
     "spec": "Reducing Tee",
-    "k_run": 0.2,
-    "k_branch": 0.9,
-    "remark": "支管口径小于主管"
+    "k_run": 0.20,
+    "k_branch": 0.90,
+    "remark": "单位:mm, 支管口径小于主管"
   },
   {
     "id": "reducer_concentric",
@@ -238,7 +228,7 @@
     "category": "渐缩",
     "spec": "Sudden Contraction",
     "angle": "90°",
-    "k": 0.5,
+    "k": 0.50,
     "remark": "直接变径阻力大"
   },
   {
@@ -247,7 +237,7 @@
     "category": "渐扩",
     "spec": "Sudden Expansion",
     "angle": "90°",
-    "k": 1,
+    "k": 1.00,
     "remark": "出口排入油箱类突扩"
   },
   {
@@ -258,7 +248,7 @@
     "Cv": 35,
     "Kv": 30,
     "resistance": "极低阻力",
-    "remark": "快速切断"
+    "remark": "Cv单位:gpm"
   },
   {
     "id": "valve_ball_dn50",
@@ -268,7 +258,7 @@
     "Cv": 180,
     "Kv": 155,
     "resistance": "极低阻力",
-    "remark": "主管路切断"
+    "remark": "Cv单位:gpm"
   },
   {
     "id": "valve_globe_dn25",
@@ -331,48 +321,49 @@
     "remark": "泵出口"
   },
   {
-    "id": "pump_cbb10",
-    "name": "CB-B 齿轮泵 B10",
+    "id": "pump_displacement",
+    "name": "容积泵 (齿轮/螺杆)",
     "category": "泵",
-    "model": "CB-B10",
-    "flow": 0.6,
-    "pressure": 2.5,
-    "remark": "极小流量注油"
-  },
-  {
-    "id": "pump_cbb25",
-    "name": "CB-B 齿轮泵 B25",
-    "category": "泵",
-    "model": "CB-B25",
+    "pump_type": "gear",
     "flow": 1.5,
     "pressure": 2.5,
-    "remark": "支路润滑"
+    "remark": "流量恒定, 压力随阻力变化"
   },
   {
-    "id": "pump_3g25",
-    "name": "螺杆泵 3G-25",
+    "id": "pump_centrifugal",
+    "name": "离心泵 (性能曲线)",
     "category": "泵",
-    "model": "3G-25",
-    "flow": 5,
-    "pressure": 0.8,
-    "remark": "辅助润滑泵"
+    "pump_type": "curve",
+    "flow": 10.0,
+    "pressure": 5.0,
+    "shutoff_pressure": 6.0,
+    "remark": "流量随压力增加而减小"
   },
   {
-    "id": "pump_3g50",
-    "name": "螺杆泵 3G-50",
-    "category": "泵",
-    "model": "3G-50",
-    "flow": 12,
-    "pressure": 0.6,
-    "remark": "齿轴主润滑泵"
+    "id": "oil_vg320",
+    "name": "VG320 滑油",
+    "category": "油品",
+    "rho_15": 920.0,
+    "v_40": 347.8,
+    "v_100": 25.0,
+    "remark": "密度920kg/m³, 40℃粘度0.32Pa·s"
   },
   {
-    "id": "pump_cl50",
-    "name": "离心泵 CL-50",
-    "category": "泵",
-    "model": "CL-50",
-    "flow": 30,
-    "pressure": 0.4,
-    "remark": "冷却水循环输送"
+    "id": "oil_vg220",
+    "name": "VG220 滑油",
+    "category": "油品",
+    "rho_15": 900.0,
+    "v_40": 244.4,
+    "v_100": 19.0,
+    "remark": "密度900kg/m³, 40℃粘度0.22Pa·s"
+  },
+  {
+    "id": "oil_vg46",
+    "name": "VG46 液压油",
+    "category": "油品",
+    "rho_15": 875.0,
+    "v_40": 46.0,
+    "v_100": 6.8,
+    "remark": "常用轻质润滑油"
   }
 ]
