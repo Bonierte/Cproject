@@ -31,9 +31,24 @@ class CalculationManager:
             nodes = [Node(d) for d in data.get("points", [])]
             pipes = [Pipe(d) for d in data.get("lines", [])]
             
+            # --- 新增：详细参数同步日志 ---
+            print("    " + "-"*40)
+            print(f"    {'[节点参数核对]':<20}")
             for node in nodes:
-                if node.type == "pump":
-                    print(f"    - 识别泵节点: {node.id}, 模式: {node.pump_mode}, 设定: {node.pump_params}")
+                param_str = f"类型={node.type:<6}"
+                if node.type == 'pump':
+                    param_str += f" | 设定压力={node.pump_params.get('A' if node.pump_mode=='curve' else 'P_max', 0)/1e3:.1f}kPa"
+                elif node.type == 'tank':
+                    param_str += f" | 油品={node.fluid_data.get('name', '未设置')}"
+                elif node.type == 'valve':
+                    param_str += f" | Cv={node.valve_cv} | 开度={node.valve_open*100}%"
+                print(f"    - {node.id:<5}: {param_str}")
+            
+            print(f"    {'[管路参数核对]':<20}")
+            for pipe in pipes:
+                print(f"    - {pipe.id:<5}: 起点={pipe.start_node_id:<3} -> 终点={pipe.end_node_id:<3} | 直径={pipe.diameter*1000:.1f}mm | 长度={pipe.length:.1f}m | 备注={pipe.remark}")
+            print("    " + "-"*40)
+            # --------------------------
             
             if not nodes:
                 print("[-] 错误: 画布为空")

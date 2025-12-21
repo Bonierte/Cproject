@@ -7,7 +7,7 @@ class Node:
     def __init__(self, data: dict):
         # 基础属性：从 temporary_data.json 中读取
         self.id = data.get("label", "")
-        self.type = data.get("ptype", "normal")  # 节点类型: normal(普通), pump(油泵), valve(阀门), tee(三通)
+        self.type = data.get("ptype", "normal")  # 节点类型: normal(普通), pump(油泵), valve(阀门), tee(三通), tank(油箱)
         self.x = float(data.get("x", 0))
         self.y = float(data.get("y", 0))
         self.elevation = float(data.get("elevation", 0) or 0)  # 节点高程 (m)
@@ -15,6 +15,9 @@ class Node:
         # 物理状态量 (计算引擎实时更新)
         self.pressure = 0.0  # 节点的静压力 (Pa)
         self.flow_net = 0.0  # 节点的净流量 (m³/s)
+
+        # --- 油箱数据 (如果是油箱) ---
+        self.fluid_data = data.get("fluid_data", {})
 
         # --- 动力源 (泵) 参数解析 ---
         # 这里的解析逻辑决定了油泵在计算中是以“恒流源”还是“压力-流量曲线”的形式存在
@@ -73,6 +76,7 @@ class Pipe:
         self.id = data.get("label", "")
         self.start_node_id = data.get("start_label", "")
         self.end_node_id = data.get("end_label", "")
+        self.remark = data.get("remark", "") # 获取备注，用于识别吸油管等特殊管路
 
         # 几何参数：计算压力损失的核心依据
         raw_dia = float(data.get("diameter", 0) or 0.040)  # 默认 40mm

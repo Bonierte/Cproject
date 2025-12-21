@@ -73,7 +73,11 @@ def calc_pipe_conductance(pipe, fluid: Fluid, dP: float) -> float:
     推导得出：G = Area * sqrt( 2*D / (lambda * L * rho * |dP|) )
     dP: 压差 (Pa), fluid: 流体物性对象
     """
-    if abs(dP) < 1e-2: return 1e-8 # 极小压差下的数值保护
+    # 极小压差下的数值处理：不再强行切断，而是切换为层流解析解
+    # 层流下 G = (pi * D^4) / (128 * mu * L)
+    if abs(dP) < 1.0: 
+        g_laminar = (math.pi * pipe.diameter**4) / (128.0 * fluid.mu * pipe.length)
+        return max(g_laminar, 1e-10)
     
     D = pipe.diameter
     L = pipe.length

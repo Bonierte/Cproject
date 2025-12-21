@@ -130,11 +130,21 @@
     "remark": "单位:mm"
   },
   {
+    "id": "pipe_suction",
+    "name": "专用吸油管 (无损)",
+    "category": "直管",
+    "dn": 50,
+    "od": 60.3,
+    "thickness": 3.8,
+    "id_mm": 52.7,
+    "remark": "吸油专用，计算时不计压力损失"
+  },
+  {
     "id": "elbow45_long",
     "name": "45°长半径弯头",
     "category": "弯头",
     "angle": 45,
-    "k": 0.20,
+    "k": 0.2,
     "remark": "R≈1.5D"
   },
   {
@@ -142,7 +152,7 @@
     "name": "90°长半径弯头",
     "category": "弯头",
     "angle": 90,
-    "k": 0.30,
+    "k": 0.3,
     "remark": "R≈1.5D"
   },
   {
@@ -158,7 +168,7 @@
     "name": "90°直角弯头",
     "category": "弯头",
     "angle": 90,
-    "k": 1.10,
+    "k": 1.1,
     "remark": "R≈0"
   },
   {
@@ -192,7 +202,7 @@
     "category": "三通",
     "spec": "45° Y-Tee",
     "k_run": 0.12,
-    "k_branch": 0.40,
+    "k_branch": 0.4,
     "remark": "单位:mm, 分流更顺畅"
   },
   {
@@ -200,8 +210,8 @@
     "name": "异径三通",
     "category": "三通",
     "spec": "Reducing Tee",
-    "k_run": 0.20,
-    "k_branch": 0.90,
+    "k_run": 0.2,
+    "k_branch": 0.9,
     "remark": "单位:mm, 支管口径小于主管"
   },
   {
@@ -228,7 +238,7 @@
     "category": "渐缩",
     "spec": "Sudden Contraction",
     "angle": "90°",
-    "k": 0.50,
+    "k": 0.5,
     "remark": "直接变径阻力大"
   },
   {
@@ -237,7 +247,7 @@
     "category": "渐扩",
     "spec": "Sudden Expansion",
     "angle": "90°",
-    "k": 1.00,
+    "k": 1.0,
     "remark": "出口排入油箱类突扩"
   },
   {
@@ -268,7 +278,7 @@
     "Cv": 13,
     "Kv": 11,
     "resistance": "高阻力",
-    "remark": "流量调节常用"
+    "remark": "Cv单位:gpm"
   },
   {
     "id": "valve_globe_dn50",
@@ -278,7 +288,7 @@
     "Cv": 45,
     "Kv": 39,
     "resistance": "高阻力",
-    "remark": "主管流量调节"
+    "remark": "Cv单位:gpm"
   },
   {
     "id": "valve_globe_dn80",
@@ -288,7 +298,7 @@
     "Cv": 110,
     "Kv": 95,
     "resistance": "高阻力",
-    "remark": "大型系统调节"
+    "remark": "Cv单位:gpm"
   },
   {
     "id": "valve_butterfly_dn100",
@@ -298,7 +308,7 @@
     "Cv": 350,
     "Kv": 300,
     "resistance": "中阻力",
-    "remark": "大流量低压管路"
+    "remark": "Cv单位:gpm"
   },
   {
     "id": "valve_check_dn25",
@@ -308,7 +318,7 @@
     "Cv": 15,
     "Kv": 13,
     "resistance": "中阻力",
-    "remark": "防止回流"
+    "remark": "Cv单位:gpm"
   },
   {
     "id": "valve_check_dn50",
@@ -318,7 +328,7 @@
     "Cv": 55,
     "Kv": 47,
     "resistance": "中阻力",
-    "remark": "泵出口"
+    "remark": "Cv单位:gpm"
   },
   {
     "id": "pump_displacement",

@@ -67,6 +67,7 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             (icon_from("getpoint.svg", self.style().standardIcon(QtWidgets.QStyle.SP_DialogYesButton)), "取点"),
             (icon_from("tuodong.svg", self.style().standardIcon(QtWidgets.QStyle.SP_ArrowUp)), "拖动"),
             (icon_from("lianxian.svg", self.style().standardIcon(QtWidgets.QStyle.SP_ArrowRight)), "连接"),
+            (icon_from("Yxiang.svg", self.style().standardIcon(QtWidgets.QStyle.SP_DriveHDIcon)), "油箱"),
             (icon_from("Beng.svg", self.style().standardIcon(QtWidgets.QStyle.SP_BrowserReload)), "油泵"),
             (icon_from("guanjian.svg", self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogNewFolder)), "三通"),
             (icon_from("valve.svg", self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay)), "阀门"),
@@ -85,13 +86,15 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 btn.toggled.connect(self._toggle_drag)
             elif idx == 2:  # 连接
                 btn.toggled.connect(lambda c, i=idx: self._toggle_connect(i, c))
-            elif idx == 3:  # 油泵点
+            elif idx == 3:  # 油箱点
+                btn.toggled.connect(lambda c, i=idx: self._toggle_tank_point(i, c))
+            elif idx == 4:  # 油泵点
                 btn.toggled.connect(lambda c, i=idx: self._toggle_pump_point(i, c))
-            elif idx == 4:  # 三通点
+            elif idx == 5:  # 三通点
                 btn.toggled.connect(lambda c, i=idx: self._toggle_tee_point(i, c))
-            elif idx == 5:  # 阀门点
+            elif idx == 6:  # 阀门点
                 btn.toggled.connect(lambda c, i=idx: self._toggle_valve_point(i, c))
-            elif idx == 6:  # 删除
+            elif idx == 7:  # 删除
                 btn.toggled.connect(lambda c, i=idx: self._toggle_delete(i, c))
             else:
                 btn.toggled.connect(lambda checked, name=text, i=idx: self._toggle_placeholder(i, name, checked))
@@ -309,6 +312,16 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             else:
                 self.grid.set_connect_enabled(False)
 
+    def _toggle_tank_point(self, idx: int, checked: bool):
+        if not self._allow_mode_toggle(idx, checked):
+            return
+        if hasattr(self, "grid"):
+            self.grid.set_add_point_enabled(checked)
+            self.grid.set_connect_enabled(False)
+            self.grid.set_point_type("tank")
+            if not checked:
+                self.grid.set_add_point_enabled(False)
+
     def _toggle_pump_point(self, idx: int, checked: bool):
         if not self._allow_mode_toggle(idx, checked):
             return
@@ -453,59 +466,30 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 QtWidgets.QMessageBox.critical(self, "错误", f"打开失败：\n{str(e)}")
 
     def _run_calculation(self):
-        """触发压力计算前弹出油品选择，然后执行仿真"""
-        # 1. 弹出油品选择对话框
-        all_items = self.grid.fittings_store.all()
-        oils = [it for it in all_items if it.get("category") == "油品"]
+        """执行仿真计算"""
+        # 1. 查找系统中的油品设置 (从油箱节点获取)
+        selected_fluid = None
+        if hasattr(self, "grid"):
+            # 遍历所有点，寻找油箱类型并获取其油品数据
+            for p in self.grid._points:
+                if p.get("ptype") == "tank" and p.get("fluid_data"):
+                    fluid_data = p.get("fluid_data")
+                    selected_fluid = Fluid(name=fluid_data["name"])
+                    selected_fluid.OIL_DATABASE[fluid_data["name"]] = {
+                        "rho_15": fluid_data.get("rho_15", 900.0),
+                        "v_40": fluid_data.get("v_40", 40.0)
+                    }
+                    selected_fluid.update_properties()
+                    break # 找到一个油箱的油品设置即可，暂不考虑多种油品混合
         
-        if not oils:
-            QtWidgets.QMessageBox.warning(self, "提示", "管件库中未找到油品数据，请先在管件库添加。")
+        if not selected_fluid:
+            QtWidgets.QMessageBox.warning(self, "提示", "系统中未找到油箱或油箱未设置油品。请先添加油箱并选择油品。")
             return
 
-        dlg = QtWidgets.QDialog(self)
-        dlg.setWindowTitle("选择仿真油品")
-        dlg.setFixedWidth(300)
-        layout = QtWidgets.QFormLayout(dlg)
-        
-        oil_combo = QtWidgets.QComboBox()
-        for o in oils:
-            oil_combo.addItem(o["name"], o)
-        
-        # 自动匹配上次选择
-        idx = oil_combo.findText(self.current_fluid.name)
-        if idx >= 0: oil_combo.setCurrentIndex(idx)
-        
-        layout.addRow("选择油品", oil_combo)
-        
-        info_label = QtWidgets.QLabel()
-        info_label.setStyleSheet("color: gray; font-size: 11px;")
-        def update_info():
-            data = oil_combo.currentData()
-            info_label.setText(f"参数: ρ={data.get('rho_15')}kg/m³, μ={data.get('v_40')}cSt")
-        oil_combo.currentIndexChanged.connect(update_info)
-        update_info()
-        layout.addRow("", info_label)
-        
-        btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-        btns.accepted.connect(dlg.accept)
-        btns.rejected.connect(dlg.reject)
-        layout.addRow(btns)
-        
-        if dlg.exec_() != QtWidgets.QDialog.Accepted:
-            return
-
-        # 2. 更新流体参数
-        selected_oil_data = oil_combo.currentData()
-        self.current_fluid = Fluid(name=selected_oil_data["name"])
-        self.current_fluid.OIL_DATABASE[selected_oil_data["name"]] = {
-            "rho_15": selected_oil_data.get("rho_15", 900.0),
-            "v_40": selected_oil_data.get("v_40", 40.0)
-        }
-        self.current_fluid.update_properties()
-        
+        self.current_fluid = selected_fluid
         self._add_log(f"开始压力仿真... (选中油品: {self.current_fluid.name})")
         
-        # 3. 执行仿真
+        # 2. 执行仿真
         if not hasattr(self, "grid") or not hasattr(self.grid, "temp_data"):
             return
             

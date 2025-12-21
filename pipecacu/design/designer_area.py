@@ -39,6 +39,7 @@ class GridWidget(QtWidgets.QWidget):
         self.pump_icon = self._load_svg_icon(["Beng.svg", "beng.svg"], 24)
         self.tee_icon = self._load_svg_icon(["D_fittings.svg", "guanjian.svg", "Tee.svg"], 24)
         self.valve_icon = self._load_svg_icon(["valve.svg", "Valve.svg"], 24)
+        self.tank_icon = self._load_svg_icon(["Yxiang.svg", "yxiang.svg"], 24)
         # 初始化时加载已有数据
         self.load_from_temp()
 
@@ -411,6 +412,9 @@ class GridWidget(QtWidgets.QWidget):
             elif ptype == "valve":
                 pen = QtGui.QPen(QtGui.QColor("#4a148c"))
                 brush = QtGui.QBrush(QtGui.QColor("#ba68c8"))
+            elif ptype == "tank":
+                pen = QtGui.QPen(QtGui.QColor("#1565c0"))
+                brush = QtGui.QBrush(QtGui.QColor("#64b5f6"))
             else:
                 pen = QtGui.QPen(QtGui.QColor("#7CFC00"))
                 brush = QtGui.QBrush(QtGui.QColor("#7CFC00"))
@@ -445,6 +449,8 @@ class GridWidget(QtWidgets.QWidget):
                 painter.drawPixmap(QtCore.QPointF(x - self.tee_icon.width() / 2, y - self.tee_icon.height() / 2), self.tee_icon)
             if ptype == "valve" and self.valve_icon:
                 painter.drawPixmap(QtCore.QPointF(x - self.valve_icon.width() / 2, y - self.valve_icon.height() / 2), self.valve_icon)
+            if ptype == "tank" and self.tank_icon:
+                painter.drawPixmap(QtCore.QPointF(x - self.tank_icon.width() / 2, y - self.tank_icon.height() / 2), self.tank_icon)
         # 连线（先画已落线，再画预览线）
         for idx, ln in enumerate(self._lines):
             s = ln.get("start", (0, 0))
@@ -513,6 +519,7 @@ class GridWidget(QtWidgets.QWidget):
             "valve_dia": point.get("valve_dia", ""),
             "valve_open": point.get("valve_open", ""),
             "valve_k": point.get("valve_k", ""),
+            "fluid_data": point.get("fluid_data", {}),
         }
         self.temp_data.upsert_point(base)
 
@@ -548,13 +555,13 @@ class GridWidget(QtWidgets.QWidget):
         lbl_label = QtWidgets.QLabel(point.get("label", ""))
         lbl_coord = QtWidgets.QLabel(f"({point.get('x', 0):.2f}, {point.get('y', 0):.2f})")
         def _ptype_to_display(pt):
-            return {"normal": "普通", "pump": "泵", "tee": "三通", "valve": "阀门"}.get(pt, "普通")
+            return {"normal": "普通", "pump": "泵", "tee": "三通", "valve": "阀门", "tank": "油箱"}.get(pt, "普通")
 
         def _display_to_ptype(txt):
-            return {"普通": "normal", "泵": "pump", "三通": "tee", "阀门": "valve"}.get(txt, "normal")
+            return {"普通": "normal", "泵": "pump", "三通": "tee", "阀门": "valve", "油箱": "tank"}.get(txt, "normal")
 
         type_box = QtWidgets.QComboBox()
-        type_box.addItems(["普通", "泵", "三通", "阀门"])
+        type_box.addItems(["普通", "泵", "三通", "阀门", "油箱"])
         type_box.setCurrentText(_ptype_to_display(point.get("ptype", "normal")))
         elevation_edit = QtWidgets.QLineEdit(str(point.get("elevation", "")))
         form_top.addRow("标签", lbl_label)
@@ -680,10 +687,33 @@ class GridWidget(QtWidgets.QWidget):
         valve_form.addRow("流量系数(Cv/Kv)", valve_k)
         valve_form.addRow("备注", remark_edit_v)
 
+        # tank form (油箱选择油品)
+        tank_widget = QtWidgets.QWidget()
+        tank_form = QtWidgets.QFormLayout(tank_widget)
+        oil_combo = QtWidgets.QComboBox()
+        all_items = self.fittings_store.all()
+        oils = [it for it in all_items if it.get("category") == "油品"]
+        for o in oils:
+            oil_combo.addItem(o["name"], o)
+        
+        # 预选当前油品
+        current_fluid_name = point.get("fluid_data", {}).get("name", "")
+        if current_fluid_name:
+            idx = oil_combo.findText(current_fluid_name)
+            if idx >= 0: oil_combo.setCurrentIndex(idx)
+        
+        tank_pressure = QtWidgets.QLabel("101.325 kPa (大气压)")
+        remark_edit_tank = QtWidgets.QLineEdit(str(point.get("remark", "")))
+        
+        tank_form.addRow("仿真油品选择", oil_combo)
+        tank_form.addRow("液面压力", tank_pressure)
+        tank_form.addRow("备注", remark_edit_tank)
+
         stack.addWidget(normal_widget)  # index 0 normal
         stack.addWidget(pump_widget)    # index 1 pump
         stack.addWidget(tee_widget)     # index 2 tee
         stack.addWidget(valve_widget)   # index 3 valve
+        stack.addWidget(tank_widget)    # index 4 tank
         layout.addWidget(stack)
 
         btn_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
@@ -708,6 +738,8 @@ class GridWidget(QtWidgets.QWidget):
                 stack.setCurrentIndex(2)
             elif ptype == "valve":
                 stack.setCurrentIndex(3)
+            elif ptype == "tank":
+                stack.setCurrentIndex(4)
             else:
                 stack.setCurrentIndex(0)
 
@@ -791,28 +823,17 @@ class GridWidget(QtWidgets.QWidget):
                 point["pump_flow"] = point["pump_npsh"] = point["pump_in_dia"] = point["pump_out_dia"] = ""
                 point["diameter"] = ""
                 point["valve_type"] = point["valve_dia"] = point["valve_open"] = point["valve_k"] = ""
-            elif ptype == "valve":
-                data = valve_combo.currentData()
-                if data:
-                    point["valve_type"] = data.get("name", "")
-                    point["valve_dia"] = str(data.get("dn", ""))
-                    point["valve_k"] = str(data.get("Kv", ""))
-                    point["remark"] = data.get("remark", "")
-                else:
-                    point["valve_type"] = valve_type.text().strip()
-                    point["valve_dia"] = valve_dia.text().strip()
-                    point["valve_k"] = valve_k.text().strip()
-                point["valve_type"] = valve_type.text().strip()
-                point["valve_dia"] = valve_dia.text().strip()
-                point["valve_open"] = valve_open.text().strip()
-                point["valve_k"] = valve_k.text().strip()
-                point["remark"] = remark_edit_v.text().strip()
+            elif ptype == "tank":
+                point["fluid_data"] = oil_combo.currentData()
+                point["remark"] = remark_edit_tank.text().strip()
+                # 清理其他类型数据
                 point["fitting_id"] = point["fitting_name"] = point["fitting_k"] = point["fitting_angle"] = ""
                 point["pump_model"] = point["pump_head"] = point["pump_eff"] = point["pump_speed"] = ""
                 point["pump_flow"] = point["pump_npsh"] = point["pump_in_dia"] = point["pump_out_dia"] = ""
                 point["tee_angle"] = point["tee_ratio"] = point["tee_k"] = ""
                 point["tee_main_dia"] = point["tee_branch_dia"] = ""
                 point["diameter"] = ""
+                point["valve_type"] = point["valve_dia"] = point["valve_open"] = point["valve_k"] = ""
             self._persist_point(point)
             self.update()
             dlg.accept()
