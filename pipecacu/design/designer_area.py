@@ -603,15 +603,15 @@ class GridWidget(QtWidgets.QWidget):
         pump_type_combo.addItems(["容积泵 (齿轮/螺杆)", "离心泵 (性能曲线)"])
         
         pump_flow = QtWidgets.QLineEdit(str(point.get("pump_flow", ""))) # m3/h
-        pump_head = QtWidgets.QLineEdit(str(point.get("pump_head", ""))) # bar
-        pump_shutoff = QtWidgets.QLineEdit(str(point.get("pump_speed", ""))) # bar (离心泵关死扬程)
+        pump_head = QtWidgets.QLineEdit(str(point.get("pump_head", ""))) # kPa
+        pump_shutoff = QtWidgets.QLineEdit(str(point.get("pump_speed", ""))) # kPa (离心泵关死扬程)
         remark_edit_p = QtWidgets.QLineEdit(str(point.get("remark", "")))
         
         pump_form.addRow("数据库选型", pump_combo)
         pump_form.addRow("计算类型", pump_type_combo)
         pump_form.addRow("设定流量(m³/h)", pump_flow)
-        pump_form.addRow("设定压力/扬程(bar)", pump_head)
-        pump_form.addRow("关死压力(bar, 仅离心泵)", pump_shutoff)
+        pump_form.addRow("设定压力/扬程(kPa)", pump_head)
+        pump_form.addRow("关死压力(kPa, 仅离心泵)", pump_shutoff)
         pump_form.addRow("备注", remark_edit_p)
 
         def on_pump_selected(idx):

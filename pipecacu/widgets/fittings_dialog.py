@@ -292,7 +292,7 @@ class FittingsDialog(QtWidgets.QDialog):
             self.table.setHorizontalHeaderLabels(["ID", "名称", "公称通径DN", "Cv", "Kv", "阻力特性", "备注"])
         elif cat == "泵":
             self.table.setColumnCount(7)
-            self.table.setHorizontalHeaderLabels(["ID", "名称", "型号", "额定流量(m³/h)", "额定压力(bar)", "用途", "备注"])
+            self.table.setHorizontalHeaderLabels(["ID", "名称", "型号", "额定流量(m³/h)", "额定压力(kPa)", "用途", "备注"])
         elif cat == "三通":
             self.table.setColumnCount(6)
             self.table.setHorizontalHeaderLabels(["ID", "名称", "规格", "直通阻力(K)", "支路阻力(K)", "备注"])

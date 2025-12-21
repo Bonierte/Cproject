@@ -31,16 +31,16 @@ class Node:
                 q_m3h = float(data.get("pump_flow", 0) or 0)
                 self.pump_params = {
                     "Q_source": q_m3h / 3600.0, # 换算为 SI 单位 m³/s
-                    "P_max": float(data.get("pump_head", 0) or 0) * 1e5 # bar -> Pa (额定最大压力)
+                    "P_max": float(data.get("pump_head", 0) or 0) * 1e3 # kPa -> Pa (额定最大压力)
                 }
             else:
                 # === 离心泵 (P-Q 曲线模型) ===
                 # 特点：升压能力随流量增大而下降
                 self.pump_mode = "curve"
-                H_rated_bar = float(data.get("pump_head", 5)) # 额定压力 (bar)
+                H_rated_kpa = float(data.get("pump_head", 500)) # 额定压力 (kPa)
                 Q_rated_m3h = float(data.get("pump_flow", 10)) # 额定流量 (m³/h)
                 # 离心泵的关键参数：关死扬程 (流量为0时的压力)
-                H_shutoff_bar = float(data.get("pump_speed", H_rated_bar * 1.2) or H_rated_bar * 1.2)
+                H_shutoff_kpa = float(data.get("pump_speed", H_rated_kpa * 1.2) or H_rated_kpa * 1.2)
                 
                 # 预计算二次曲线系数: P = A - B*Q²
                 # A = 关死压力
@@ -48,11 +48,11 @@ class Node:
                 Q_rated_si = Q_rated_m3h / 3600.0
                 B_coeff = 0.0
                 if Q_rated_si > 1e-6:
-                    B_coeff = (H_shutoff_bar - H_rated_bar) / (Q_rated_si ** 2)
+                    B_coeff = (H_shutoff_kpa - H_rated_kpa) / (Q_rated_si ** 2)
                 
                 self.pump_params = {
-                    "A": H_shutoff_bar * 1e5, # Pa
-                    "B": B_coeff * 1e5       # Pa/(m³/s)²
+                    "A": H_shutoff_kpa * 1e3, # Pa
+                    "B": B_coeff * 1e3       # Pa/(m³/s)²
                 }
 
         # 阀门与元件属性

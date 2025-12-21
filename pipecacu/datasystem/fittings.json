@@ -326,7 +326,7 @@
     "category": "泵",
     "pump_type": "gear",
     "flow": 1.5,
-    "pressure": 2.5,
+    "pressure": 250.0,
     "remark": "流量恒定, 压力随阻力变化"
   },
   {
@@ -335,8 +335,8 @@
     "category": "泵",
     "pump_type": "curve",
     "flow": 10.0,
-    "pressure": 5.0,
-    "shutoff_pressure": 6.0,
+    "pressure": 500.0,
+    "shutoff_pressure": 600.0,
     "remark": "流量随压力增加而减小"
   },
   {

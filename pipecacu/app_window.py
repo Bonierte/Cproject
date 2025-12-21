@@ -180,7 +180,7 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         # 使用表格展示压力和流量
         self.result_table = QtWidgets.QTableWidget()
         self.result_table.setColumnCount(4)
-        self.result_table.setHorizontalHeaderLabels(["名称", "类型", "压力 (Pa)", "流量 (m³/h)"])
+        self.result_table.setHorizontalHeaderLabels(["名称", "类型", "压力 (kPa)", "流量 (m³/h)"])
         self.result_table.horizontalHeader().setStretchLastSection(True)
         self.result_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.result_table.setStyleSheet("QTableWidget { border: none; }")
@@ -538,7 +538,7 @@ class AppWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             
             self.result_table.setItem(row, 0, QtWidgets.QTableWidgetItem(node_id))
             self.result_table.setItem(row, 1, QtWidgets.QTableWidgetItem("节点"))
-            self.result_table.setItem(row, 2, QtWidgets.QTableWidgetItem(f"{p_val:.2f}"))
+            self.result_table.setItem(row, 2, QtWidgets.QTableWidgetItem(f"{p_val / 1000.0:.3f}"))
             self.result_table.setItem(row, 3, QtWidgets.QTableWidgetItem(f"{q_node * 3600.0:.4f}")) # 换算为 m3/h
             row += 1
             

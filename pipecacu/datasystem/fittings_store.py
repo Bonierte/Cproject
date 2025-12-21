@@ -59,8 +59,8 @@ class FittingsStore:
             {"id": "valve_check_dn25", "name": "单向阀 DN25", "category": "阀门", "dn": 25, "Cv": 15, "Kv": 13, "resistance": "中阻力", "remark": "Cv单位:gpm"},
             {"id": "valve_check_dn50", "name": "单向阀 DN50", "category": "阀门", "dn": 50, "Cv": 55, "Kv": 47, "resistance": "中阻力", "remark": "Cv单位:gpm"},
             # 泵 - 简化为两类
-            {"id": "pump_displacement", "name": "容积泵 (齿轮/螺杆)", "category": "泵", "pump_type": "gear", "flow": 1.5, "pressure": 2.5, "remark": "流量恒定, 压力随阻力变化"},
-            {"id": "pump_centrifugal", "name": "离心泵 (性能曲线)", "category": "泵", "pump_type": "curve", "flow": 10.0, "pressure": 5.0, "shutoff_pressure": 6.0, "remark": "流量随压力增加而减小"},
+            {"id": "pump_displacement", "name": "容积泵 (齿轮/螺杆)", "category": "泵", "pump_type": "gear", "flow": 1.5, "pressure": 250.0, "remark": "流量恒定, 压力随阻力变化"},
+            {"id": "pump_centrifugal", "name": "离心泵 (性能曲线)", "category": "泵", "pump_type": "curve", "flow": 10.0, "pressure": 500.0, "shutoff_pressure": 600.0, "remark": "流量随压力增加而减小"},
             # 油品 (流体) - 仅保留三种特定油品
             {"id": "oil_vg320", "name": "VG320 滑油", "category": "油品", "rho_15": 920.0, "v_40": 347.8, "v_100": 25.0, "remark": "密度920kg/m³, 40℃粘度0.32Pa·s"},
             {"id": "oil_vg220", "name": "VG220 滑油", "category": "油品", "rho_15": 900.0, "v_40": 244.4, "v_100": 19.0, "remark": "密度900kg/m³, 40℃粘度0.22Pa·s"},

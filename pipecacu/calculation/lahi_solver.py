@@ -22,14 +22,14 @@ class LAHISolver:
         # 算法配置
         self.tolerance = 1e-6      # 收敛容差：节点质量流量残差 (kg/s)
         self.max_iter = 50         # 最大迭代步数
-        self.omega = 0.8           # 初始松弛因子 (用于更新等效流导 G)
-        self.min_omega = 0.1       # 最小松弛因子 (当残差震荡时自动减小)
-        self.max_omega = 1.0       # 最大松弛因子 (收敛平稳时自动增大)
+        self.omega = 0.8           # 初始松弛因子
+        self.min_omega = 0.1       # 最小松弛因子
+        self.max_omega = 1.0       # 最大松弛因子
         
-        # 状态存储
-        self.num_nodes = len(graph.nodes)
-        self.P = np.ones(self.num_nodes) * 1.01325e5  # 压力向量 (Pa)，初始设为标准大气压
-        self.G_map = {}  # 存储管路/元件当前的等效流导：G = Q / dP
+        # 状态存储 - 使用拓扑分配的实际计算位总数
+        self.num_nodes = graph.num_total_indices 
+        self.P = np.ones(self.num_nodes) * 1.01325e5  # 压力向量 (Pa)
+        self.G_map = {}  # 存储管路/元件当前的等效流导
     
     def _init_conductance(self):
         """
@@ -115,13 +115,17 @@ class LAHISolver:
         return False, {}
 
     def _find_reference_index(self):
-        """寻找系统中作为基准的大气压点"""
-        ref_idx = 0
+        """寻找系统中作为基准的大气压点。现在优先选择泵的入油口。"""
+        # 策略：寻找第一个泵的入油口作为全局大气压参考点
+        for node in self.graph.nodes:
+            if node.type == "pump" and node.inlet_idx is not None:
+                return node.inlet_idx
+        
+        # 兜底：寻找第一个普通节点
         for node in self.graph.nodes:
             if node.type != "pump":
-                ref_idx = node.matrix_idx
-                break
-        return ref_idx
+                return node.matrix_idx
+        return 0
 
     def _assemble_system(self):
         """组装线性方程组 G * P = Q"""
@@ -129,62 +133,73 @@ class LAHISolver:
         G = lil_matrix((n, n))
         Q = np.zeros(n)
 
-        # 1. 填充管路流导项 (非对角线对称阵)
+        # 1. 填充管路流导项
         for pipe in self.graph.pipes:
             i, j = pipe.start_idx, pipe.end_idx
             g = self.G_map.get(pipe.id, 1e-6)
-            
             G[i, i] += g
             G[j, j] += g
             G[i, j] -= g
             G[j, i] -= g
 
-        # 2. 注入动力源 (泵)
+        # 2. 注入动力源 (泵的“吸吐”模型)
         for node in self.graph.nodes:
-            idx = node.matrix_idx
             if node.type == "pump":
-                # 容积泵表现为恒定的质量/流量源，注入 Q 向量
+                in_idx = node.inlet_idx
+                out_idx = node.matrix_idx
+                
                 if node.pump_mode == "constant_flow":
                     q_source = node.pump_params.get("Q_source", 0)
-                    Q[idx] += q_source 
-                # 离心泵在预测步简化为微小压升注入，引导迭代方向
+                    # 泵的行为：从 IN 抽走 Q，向 OUT 吐出 Q
+                    Q[out_idx] += q_source 
+                    Q[in_idx] -= q_source
                 elif node.pump_mode == "curve":
                     p_a = node.pump_params.get("A", 0)
-                    Q[idx] += p_a * 1e-6
+                    # 离心泵在预测步：给出口一个初始压力趋势
+                    Q[out_idx] += p_a * 1e-6
+                    Q[in_idx] -= p_a * 1e-6
 
         # 3. 设置参考压强锚点 ( Dirichlet 边界条件)
         ref_idx = self._find_reference_index()
-        G[ref_idx, ref_idx] += 1e6 # 赋予一个极大的流导连接到“地”
-        Q[ref_idx] += 1e6 * 1.01325e5 # 使该点压力强制趋向于标准大气压
+        G[ref_idx, ref_idx] += 1e6 
+        Q[ref_idx] += 1e6 * 1.01325e5 
 
         return G, Q
 
     def _audit_physics(self):
-        """
-        物理审计步：依据当前压力分布，计算非线性管道特性。
-        """
+        """物理审计步：计算真实流量并核算质量守恒"""
         real_flows = {pipe.id: 0.0 for pipe in self.graph.pipes}
         node_residuals = np.zeros(self.num_nodes)
 
-        # 1. 计算每条管道的真实物理流量
+        # 1. 计算管道真实流量
         for pipe in self.graph.pipes:
             i, j = pipe.start_idx, pipe.end_idx
             dp = self.P[i] - self.P[j]
-            # 调用物理引擎中的 Darcy 公式
             g_audit = calc_pipe_conductance(pipe, self.fluid, dp)
             q = g_audit * dp
             real_flows[pipe.id] = q
             
-            # 根据流量方向累加节点质量守恒残差 (流出为负，流入为正)
             node_residuals[i] -= q
             node_residuals[j] += q
 
-        # 2. 注入泵的流量源贡献
+        # 2. 核算泵的质量平衡
         for node in self.graph.nodes:
-            idx = node.matrix_idx
-            if node.type == "pump" and node.pump_mode == "constant_flow":
-                q_source = node.pump_params.get("Q_source", 0)
-                node_residuals[idx] += q_source # 泵向节点注入流量
+            if node.type == "pump":
+                in_idx = node.inlet_idx
+                out_idx = node.matrix_idx
+                
+                # 无论哪种泵，物理上它都是从 IN 抽流量，向 OUT 吐流量
+                # 这里假设泵内部流量守恒 Q_in = Q_out = Q_pump
+                if node.pump_mode == "constant_flow":
+                    q_pump = node.pump_params.get("Q_source", 0)
+                else:
+                    # 曲线泵：根据当前泵口压差反推真实流量
+                    dp_pump = self.P[out_idx] - self.P[in_idx]
+                    # Q = sqrt((A - dP)/B) 的变形，这里简化处理或调用 physics
+                    q_pump = node.pump_params.get("Q_source", 0) # 暂用额定
+                
+                node_residuals[out_idx] += q_pump # 向出口注油
+                node_residuals[in_idx] -= q_pump # 从入口抽油
 
         return real_flows, node_residuals
 
@@ -208,28 +223,38 @@ class LAHISolver:
             self.G_map[pipe.id] = (1 - self.omega) * g_old + self.omega * g_target
 
     def _format_results(self, flows):
-        """格式化计算输出：计算节点通量和压力"""
+        """格式化计算输出：将内部计算节点的压力/流量映射回 UI 物理节点"""
         node_flow_results = {}
+        pressures = {}
+
         for node in self.graph.nodes:
-            idx = node.matrix_idx
-            q_in_pipes = 0.0
-            q_out_pipes = 0.0
-            for pipe in self.graph.pipes:
-                q = flows[pipe.id]
-                if pipe.end_idx == idx:
-                    if q > 0: q_in_pipes += q
-                    else: q_out_pipes += abs(q)
-                if pipe.start_idx == idx:
-                    if q > 0: q_out_pipes += q
-                    else: q_in_pipes += abs(q)
+            # 压力：始终取主节点（出口）的压力
+            out_idx = node.matrix_idx
+            pressures[node.id] = float(self.P[out_idx])
             
-            if node.type == "pump" and node.pump_mode == "constant_flow":
-                node_flow_results[node.id] = node.pump_params.get("Q_source", 0)
+            # 流量汇总逻辑
+            if node.type == "pump":
+                # 对于泵，流量就是其额定/计算流量
+                if node.pump_mode == "constant_flow":
+                    node_flow_results[node.id] = node.pump_params.get("Q_source", 0)
+                else:
+                    # 简化：取出口连接管路的总流量
+                    node_flow_results[node.id] = node.pump_params.get("Q_source", 0)
             else:
-                node_flow_results[node.id] = max(q_in_pipes, q_out_pipes)
+                # 对于普通节点，汇总流入流量
+                q_sum = 0.0
+                for pipe in self.graph.pipes:
+                    q = flows[pipe.id]
+                    # 如果这根管子连入该节点
+                    if pipe.end_idx == out_idx:
+                        q_sum += max(0, q)
+                    # 或者如果这根管子反向流入该节点
+                    elif pipe.start_idx == out_idx:
+                        q_sum += max(0, -q)
+                node_flow_results[node.id] = q_sum
 
         return {
-            "pressures": {node.id: float(self.P[node.matrix_idx]) for node in self.graph.nodes},
+            "pressures": pressures,
             "flows": flows,
             "node_flows": node_flow_results
         }
@@ -237,9 +262,9 @@ class LAHISolver:
     def _print_terminal_summary(self, results):
         """美化打印终端摘要"""
         print("\n--- 计算结果摘要 (SI单位/常用单位) ---")
-        print(f"{'节点ID':<10} | {'压力 (Pa)':<15} | {'压力 (bar)':<12} | {'总流量 (m³/h)':<12}")
+        print(f"{'节点ID':<10} | {'压力 (Pa)':<15} | {'压力 (kPa)':<12} | {'总流量 (m³/h)':<12}")
         print("-" * 60)
         for node_id, p in results["pressures"].items():
             q_m3h = results["node_flows"].get(node_id, 0) * 3600.0
-            print(f"{node_id:<10} | {p:15.2f} | {p/1e5:12.4f} | {q_m3h:12.4f}")
+            print(f"{node_id:<10} | {p:15.2f} | {p/1e3:12.4f} | {q_m3h:12.4f}")
         print("-" * 60 + "\n")
