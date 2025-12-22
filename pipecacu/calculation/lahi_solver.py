@@ -14,7 +14,7 @@ class LAHISolver:
     实现原理：
     1. 线性预测层：假设各元件流导 G 为常数，通过矩阵 GP = Q 快速计算全场初始压力场。
     2. 局部物理审计：在给定压力场下，利用高精度的非线性物理公式（Darcy, Churchill等）计算各元件的“真实流量”。
-    3. 流导修正层：对比线性预测流量与真实流量的差异，通过松弛因子 omega 修正流导 G，进入下一轮迭代。
+    3. 流导修正层：对比线性预测流量与真实流量性差异，通过松弛因子 omega 修正流导 G，进入下一轮迭代。
     """
     def __init__(self, graph: NetworkGraph):
         self.graph = graph
@@ -129,18 +129,14 @@ class LAHISolver:
     def _find_pressure_anchors(self):
         """
         寻找系统中的压力锚点：
-        1. 所有油箱的 OUT (吸油口) -> 101.325 kPa (标准大气压)
-        2. 所有油箱的 IN (回油口) -> 101.325 kPa
-        3. 所有泵的 OUT (出油口) -> 用户设定值 (绝对压力)
+        1. 仅油箱的 OUT (吸油口) -> 101.325 kPa (标准大气压基准)
+        2. 所有泵的 OUT (出油口) -> 用户设定值 (绝对压力)
         """
         anchors = {}
         for node in self.graph.nodes:
             if node.type == "tank":
-                # 油箱吸油口 (matrix_idx) 是标准大气压
+                # 仅锚定吸油口 (matrix_idx) 为标准大气压
                 anchors[node.matrix_idx] = 1.01325e5
-                # 油箱回油口 (inlet_idx) 也是标准大气压
-                if node.inlet_idx is not None:
-                    anchors[node.inlet_idx] = 1.01325e5
             elif node.type == "pump":
                 # 泵排油口 (matrix_idx) 采用用户设定值作为绝对压力
                 set_p_pa = node.pump_params.get("P_max", 0)
@@ -166,8 +162,21 @@ class LAHISolver:
             G[i, j] -= g
             G[j, i] -= g
 
+        # 1.5 油箱内部连通逻辑 (核心改进)
+        # 建立 IN 口到 OUT 口的数学联系，但不锁死 IN 口压力
+        for node in self.graph.nodes:
+            if node.type == "tank" and node.inlet_idx is not None:
+                # 给一个极大的流导（例如 10.0 m3/s/Pa），模拟油箱内部无阻力
+                # 这样 IN 口的压力会趋近于 OUT 口（大气压），但会保留真实的系统背压
+                g_internal = 10.0 
+                i, j = node.inlet_idx, node.matrix_idx
+                G[i, i] += g_internal
+                G[j, j] += g_internal
+                G[i, j] -= g_internal
+                G[j, i] -= g_internal
+
         # 2. 泵的吸入联动 (维持泵 IN/OUT 流量平衡)
-        # 核心逻辑：泵出口流出多少油，入口就得从吸油管抽走多少油
+        # 核心逻辑：泵出口流出多少 oil，入口就得从吸油管抽走多少 oil
         for node in self.graph.nodes:
             if node.type == "pump":
                 in_idx = node.inlet_idx
@@ -223,7 +232,6 @@ class LAHISolver:
                         q_actual_out -= real_flows[pipe.id]
                 
                 # 泵入口必须从吸油管抽走同样多的流量
-                # 理想情况下 node_residuals[in_idx] + q_actual_out 应为 0
                 node_residuals[in_idx] -= q_actual_out 
             
             elif node.type == "tank":
@@ -242,7 +250,6 @@ class LAHISolver:
             dp = self.P[i] - self.P[j]
             
             # 根据 Q = G * dP 反推 G_target = Q_real / dP
-            # 即使压差很小，也使用物理计算出的流导，不再强行归零
             if abs(dp) < 0.1:
                 # 极小压差下，使用物理公式（层流极限）直接计算流导
                 g_target = calc_pipe_conductance(pipe, self.fluid, 0.5) 
